@@ -1,0 +1,73 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage-diff:
+    name: Coverage Diff
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for diff
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage/lcov.info
+          flags: pr-diff
+          name: coverage-diff
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      
+      - name: Check coverage thresholds
+        run: |
+          # Check if coverage meets minimum thresholds
+          node -e "
+          const coverage = require('./coverage/coverage-summary.json');
+          const total = coverage.total;
+          
+          const thresholds = {
+            lines: 70,
+            functions: 70,
+            branches: 70,
+            statements: 70
+          };
+          
+          let failed = false;
+          for (const [key, threshold] of Object.entries(thresholds)) {
+            const value = total[key].pct;
+            if (value < threshold) {
+              console.error(\`❌ ${key} coverage ${value}% is below threshold ${threshold}%\`);
+              failed = true;
+            } else {
+              console.log(\`✅ ${key} coverage ${value}% meets threshold ${threshold}%\`);
+            }
+          }
+          
+          if (failed) {
+            process.exit(1);
+          }
+          "
